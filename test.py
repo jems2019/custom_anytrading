@@ -19,65 +19,65 @@ from stable_baselines import PPO2
 
 from sklearn.preprocessing import MinMaxScaler
 
+print('loading data')
 data = DataReader('F', 'yahoo', '2000-01-01')
 
-price_data = data.loc[:,data.columns != 'Volume']
-print(price_data.head())
 
-high = price_data['High'].max()
-low = price_data['Low'].min()
+def scale_stock_data(df):
+    price_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close']
+    high = df['High'].max()
+    low = df['Adj Close'].min()
+    diff = high - low
 
-print(high)
-print(low)
+    df[price_columns] = df[price_columns].applymap(lambda x: ((x-low)/diff))
 
-#min max scale the prices
-price_data = (price_data-low)/(high-low)
+    scaler = MinMaxScaler()
+    df['Volume'] = scaler.fit_transform(df['Volume'].to_numpy().reshape(-1, 1))
 
-print(price_data.head())
+    return df
 
-
-scaler = MinMaxScaler()
-scaler.fit(data)
-scaled_data = scaler.transform(data)
-scaled_data = pd.DataFrame(scaled_data, columns=data.columns)
+print(data.head)
 
 #need to scale high low open close adj close with same values
 
 env = gym.make(
-    'stocks-v0',
-    df = price_data,
-    frame_bound = (1000,len(price_data)),
+    'custom_stocks-v0',
+    stock_df = data,
+    pred_df = data,
     window_size = 14,
+    initial_balance = 5000,
+    min_percent_loss = 1,
     )
 
 
 print("env information:")
 print("> shape:", env.shape)
 print("> df.shape:", env.df.shape)
-print("> prices.shape:", env.prices.shape)
-print("> signal_features.shape:", env.signal_features.shape)
-print("> max_possible_profit:", env.max_possible_profit())
+env.render()
 env.reset()
 
-obs, rewards, done, info = env.step(1)
+temp_action = [1,0,0,.3]
+
+obs, rewards, done, info = env.step(temp_action)
 print(obs)
 
 
 
-vec_env = make_vec_env(
-    custom_anytrading.envs.StocksEnv, 
-    env_kwargs = {'df':price_data, 'frame_bound':(1000,len(price_data)), 'window_size':14},
-    n_envs=4)
+# vec_env = make_vec_env(
+#     custom_anytrading.envs.StocksEnv, 
+#     env_kwargs = {'df':price_data, 'frame_bound':(1000,len(price_data)), 'window_size':14},
+#     n_envs=4)
 
 
-model = PPO2(MlpPolicy, vec_env, verbose=0)
-model.learn(total_timesteps=10000)
+model = PPO2(MlpPolicy, env, verbose=0)
+model.learn(total_timesteps=100000)
 
+print('done')
 
 # Enjoy trained agent
 obs = env.reset()
 c = 0
-while True:
+while c<260:
     # print('my obs')
     # print(obs)
     action, _states = model.predict(obs)
@@ -93,8 +93,6 @@ while True:
 
 print(c)
 
-plt.cla()
-env.render_all()
-plt.show()
+env.render()
 
 
