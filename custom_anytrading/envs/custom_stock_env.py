@@ -6,6 +6,9 @@ import numpy as np
 from enum import Enum
 import matplotlib.pyplot as plt
 
+from sklearn.preprocessing import MinMaxScaler
+
+
 # based off of https://towardsdatascience.com/creating-a-custom-openai-gym-environment-for-stock-trading-be532be3910e
 class CustomStockEnv(gym.Env):
     metadata = {'render.modes': ['human']}
@@ -15,10 +18,17 @@ class CustomStockEnv(gym.Env):
         self.df = stock_df
         self.pred_df = pred_df
 
+        self.scale_df = stock_df.copy()
+        self.scale_pred_df = pred_df.copy()
+
+        self._scale_df()
+
         self.initial_balance = initial_balance
         self.min_percent_loss = min_percent_loss
 
         self.min_balance = initial_balance*(1-min_percent_loss)
+        print('min balance')
+        print(self.min_balance)
 
         self.balance = self.initial_balance
         self.net_worth = self.initial_balance
@@ -45,6 +55,19 @@ class CustomStockEnv(gym.Env):
 
         
         #self.reset()
+
+    def _scale_df(self):
+            price_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close']
+            high = self.scale_df['High'].max()
+            low = self.scale_df['Adj Close'].min()
+            diff = high - low
+
+            self.scale_df[price_columns] = self.scale_df[price_columns].applymap(lambda x: ((x-low)/diff))
+            self.scale_pred_df[price_columns] = self.scale_pred_df[price_columns].applymap(lambda x: ((x-low)/diff))
+
+            scaler = MinMaxScaler()
+            self.scale_df['Volume'] = scaler.fit_transform(self.scale_df['Volume'].to_numpy().reshape(-1, 1))
+            self.scale_pred_df['Volume'] = scaler.transform(self.scale_pred_df['Volume'].to_numpy().reshape(-1, 1))
         
     def reset(self):
         # Reset the state of the environment to an initial state
@@ -73,8 +96,11 @@ class CustomStockEnv(gym.Env):
         stock_info = self.df.iloc[(self.current_step-window_offset):self.current_step, :]
         pred_info = self.pred_df.iloc[self.current_step:(self.current_step+window_offset), :]
 
-        obs = stock_info.append(pred_info, ignore_index=True)
+        scale_stock_info = self.scale_df.iloc[(self.current_step-window_offset):self.current_step, :]
+        scale_pred_info = self.scale_pred_df.iloc[self.current_step:(self.current_step+window_offset), :]
 
+        obs = stock_info.append(pred_info, ignore_index=True)
+        scale_obs = scale_stock_info.append(scale_pred_info, ignore_index=True)
 
         # Append additional data and scale each value to between 0-1
         # obs = np.append(frame, [[
@@ -86,7 +112,7 @@ class CustomStockEnv(gym.Env):
         #     self.total_sales_value / (MAX_NUM_SHARES * MAX_SHARE_PRICE),
         # ]], axis=0)
 
-        return obs
+        return scale_obs
     
 
     def take_action(self, action):
@@ -164,6 +190,7 @@ class CustomStockEnv(gym.Env):
         done = self.net_worth < self.min_balance
 
         if (done):
+            print('im done')
             reward = -100
             return obs, reward, done, {}
         else:
