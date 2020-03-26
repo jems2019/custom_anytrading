@@ -20,35 +20,32 @@ from stable_baselines import PPO2
 from sklearn.preprocessing import MinMaxScaler
 
 print('loading data')
-data = DataReader('F', 'yahoo', '2000-01-01')
-
-
-def scale_stock_data(df):
-    price_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close']
-    high = df['High'].max()
-    low = df['Adj Close'].min()
-    diff = high - low
-
-    df[price_columns] = df[price_columns].applymap(lambda x: ((x-low)/diff))
-
-    scaler = MinMaxScaler()
-    df['Volume'] = scaler.fit_transform(df['Volume'].to_numpy().reshape(-1, 1))
-
-    return df
+data = DataReader('AAPL', 'yahoo', start='2000-01-01', end='2019-01-01')
 
 print(data.head)
 
-#need to scale high low open close adj close with same values
+test_data = data.tail(200)
+train_data = data.head(-500)
 
 env = gym.make(
     'custom_stocks-v0',
-    stock_df = data,
-    pred_df = data,
+    stock_df = train_data,
+    pred_df = train_data,
     window_size = 14,
     initial_balance = 5000,
-    min_percent_loss = 1,
+    min_percent_loss = .25,
+    with_pred=False
     )
 
+test_env = gym.make(
+    'custom_stocks-v0',
+    stock_df = test_data,
+    pred_df = test_data,
+    window_size = 14,
+    initial_balance = 5000,
+    min_percent_loss = .25,
+    with_pred=False
+    )
 
 print("env information:")
 print("> shape:", env.shape)
@@ -62,37 +59,32 @@ obs, rewards, done, info = env.step(temp_action)
 print(obs)
 
 
-
-# vec_env = make_vec_env(
-#     custom_anytrading.envs.StocksEnv, 
-#     env_kwargs = {'df':price_data, 'frame_bound':(1000,len(price_data)), 'window_size':14},
-#     n_envs=4)
-
-
+env.reset()
 model = PPO2(MlpPolicy, env, verbose=0)
 model.learn(total_timesteps=100000)
 
 print('done')
 
-# Enjoy trained agent
-obs = env.reset()
-c = 0
-while c<260:
-    # print('my obs')
-    # print(obs)
-    action, _states = model.predict(obs)
-    # print('resulting action')
-    # print(action)
-    obs, rewards, done, info = env.step(action)
-    # print('stepping')
-    # print(rewards)
-    c += 1
-    if done:
-        print("info:", info)
-        break
+profits = []
+sims = 100
 
-print(c)
+for i in range(sims):
+    obs = test_env.reset()
+    while True:
+        action, _states = model.predict(obs)
+        obs, rewards, done, info = test_env.step(action)
+        if done:
+            if(i%10 == 0):
+                print('finished sim %d/%d'%(i,sims))
+            profits.append(info['profit'])
+            break
 
-env.render()
+print(profits)
+
+pos_count = len(list(filter(lambda x: (x >= 0), profits))) 
+print('made profit - ' + str(pos_count/len(profits)))
+
+test_env.render()
+
 
 

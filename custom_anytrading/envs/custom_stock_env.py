@@ -13,7 +13,8 @@ from sklearn.preprocessing import MinMaxScaler
 class CustomStockEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, stock_df, pred_df, window_size, initial_balance, min_percent_loss):
+    def __init__(self, stock_df, pred_df, window_size, initial_balance, min_percent_loss, with_pred=False):
+
         # dataframe of stock timeline, the data needed to run the sim
         self.df = stock_df
         self.pred_df = pred_df
@@ -22,6 +23,12 @@ class CustomStockEnv(gym.Env):
         self.scale_pred_df = pred_df.copy()
 
         self._scale_df()
+
+        self.with_pred = with_pred
+        if(self.with_pred):
+            self.mode = 'with predictions'
+        else:
+            self.mode ='without preditions'
 
         self.initial_balance = initial_balance
         self.min_percent_loss = min_percent_loss
@@ -91,28 +98,23 @@ class CustomStockEnv(gym.Env):
     
     def next_observation(self):
 
-        window_offset = self.window_size//2
+        if(self.with_pred):
+            window_offset = self.window_size//2
 
-        stock_info = self.df.iloc[(self.current_step-window_offset):self.current_step, :]
-        pred_info = self.pred_df.iloc[self.current_step:(self.current_step+window_offset), :]
+            # stock_info = self.df.iloc[(self.current_step-window_offset):self.current_step, :]
+            # pred_info = self.pred_df.iloc[self.current_step:(self.current_step+window_offset), :]
+            # obs = stock_info.append(pred_info, ignore_index=True)
 
-        scale_stock_info = self.scale_df.iloc[(self.current_step-window_offset):self.current_step, :]
-        scale_pred_info = self.scale_pred_df.iloc[self.current_step:(self.current_step+window_offset), :]
+            scale_stock_info = self.scale_df.iloc[(self.current_step-window_offset):self.current_step, :]
+            scale_pred_info = self.scale_pred_df.iloc[self.current_step:(self.current_step+window_offset), :]
 
-        obs = stock_info.append(pred_info, ignore_index=True)
-        scale_obs = scale_stock_info.append(scale_pred_info, ignore_index=True)
+            scale_obs = scale_stock_info.append(scale_pred_info, ignore_index=True)
 
-        # Append additional data and scale each value to between 0-1
-        # obs = np.append(frame, [[
-        #     self.balance / MAX_ACCOUNT_BALANCE,
-        #     self.max_net_worth / MAX_ACCOUNT_BALANCE,
-        #     self.shares_held / MAX_NUM_SHARES,
-        #     self.cost_basis / MAX_SHARE_PRICE,
-        #     self.total_shares_sold / MAX_NUM_SHARES,
-        #     self.total_sales_value / (MAX_NUM_SHARES * MAX_SHARE_PRICE),
-        # ]], axis=0)
+            return scale_obs
+        else:
+            scale_stock_info = self.scale_df.iloc[(self.current_step-self.window_size):self.current_step, :]
+            return scale_stock_info
 
-        return scale_obs
     
 
     def take_action(self, action):
@@ -189,17 +191,26 @@ class CustomStockEnv(gym.Env):
         # check if you have lost more than half your starting money
         done = self.net_worth < self.min_balance
 
+        info = {
+            'mode': self.mode,
+            'initial_balance': self.initial_balance,
+            'min_balance': self.min_balance,
+            'balance': self.balance,
+            'shares': self.shares_held,
+            'net_worth': self.net_worth,
+            'profit': (self.net_worth - self.initial_balance)
+        }
+
         if (done):
-            print('im done')
             reward = -100
-            return obs, reward, done, {}
+            return obs, reward, done, info
         else:
             if(self.current_step >= self.df.shape[0]-self.window_size):
                 done = True
                 self.current_step = self.window_size
         
         reward = (self.net_worth/self.initial_balance) + delay_modifier
-        return obs, reward, done, {}
+        return obs, reward, done, info
 
         # # check if there are still possible days in the stock timeline
         # # if theere are no more days, reset to the begining of the timeline
@@ -224,7 +235,7 @@ class CustomStockEnv(gym.Env):
         # Render the environment to the screen
         # profit is the total increase of net worth from the start
         profit = self.net_worth - self.initial_balance
-
+        print(f'mode: {self.mode}')
         print(f'Step: {self.current_step}')
         print(f'initial_balance: {self.initial_balance}')
         print(f'min_balance: {self.min_balance}')
