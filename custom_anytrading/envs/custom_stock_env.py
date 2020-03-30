@@ -13,7 +13,15 @@ from sklearn.preprocessing import MinMaxScaler
 class CustomStockEnv(gym.Env):
     metadata = {'render.modes': ['human']}
     
-    def __init__(self, stock_df, pred_df, window_size, initial_balance, min_percent_loss, with_pred=False):
+    def __init__(self, 
+        stock_df, 
+        pred_df, 
+        window_size, 
+        initial_balance, 
+        min_percent_loss, 
+        with_pred=False, 
+        test_env=False, 
+        train_df=None):
 
         # dataframe of stock timeline, the data needed to run the sim
         self.df = stock_df
@@ -22,7 +30,14 @@ class CustomStockEnv(gym.Env):
         self.scale_df = stock_df.copy()
         self.scale_pred_df = pred_df.copy()
 
-        self._scale_df()
+        self.train_df = train_df
+
+        if not(test_env):
+            self._scale_df()
+        else:
+            print('This is a testing environment, scaling based on training data.')
+            self._training_scale_df()
+
 
         self.with_pred = with_pred
         if(self.with_pred):
@@ -34,8 +49,6 @@ class CustomStockEnv(gym.Env):
         self.min_percent_loss = min_percent_loss
 
         self.min_balance = initial_balance*(1-min_percent_loss)
-        print('min balance')
-        print(self.min_balance)
 
         self.balance = self.initial_balance
         self.net_worth = self.initial_balance
@@ -75,7 +88,22 @@ class CustomStockEnv(gym.Env):
             scaler = MinMaxScaler()
             self.scale_df['Volume'] = scaler.fit_transform(self.scale_df['Volume'].to_numpy().reshape(-1, 1))
             self.scale_pred_df['Volume'] = scaler.transform(self.scale_pred_df['Volume'].to_numpy().reshape(-1, 1))
-        
+    
+    def _training_scale_df(self):
+        #for running a test env, used to properly scale the training df so the model doesn't 'cheat' and know the scalings for the future prices
+        price_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close']
+        high = self.train_df['High'].max()
+        low = self.train_df['Adj Close'].min()
+        diff = high - low
+
+        self.scale_df[price_columns] = self.scale_df[price_columns].applymap(lambda x: ((x-low)/diff))
+        self.scale_pred_df[price_columns] = self.scale_pred_df[price_columns].applymap(lambda x: ((x-low)/diff))
+
+        scaler = MinMaxScaler()
+        scaler.fit(self.train_df['Volume'].to_numpy().reshape(-1, 1))
+        self.scale_df['Volume'] = scaler.transform(self.scale_df['Volume'].to_numpy().reshape(-1, 1))
+        self.scale_pred_df['Volume'] = scaler.transform(self.scale_pred_df['Volume'].to_numpy().reshape(-1, 1))    
+
     def reset(self):
         # Reset the state of the environment to an initial state
         # set these as the same to start

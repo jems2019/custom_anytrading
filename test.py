@@ -44,7 +44,9 @@ test_env = gym.make(
     window_size = 14,
     initial_balance = 5000,
     min_percent_loss = .25,
-    with_pred=False
+    with_pred=False,
+    test_env=True,
+    train_df=train_data
     )
 
 print("env information:")
@@ -61,12 +63,12 @@ print(obs)
 
 env.reset()
 model = PPO2(MlpPolicy, env, verbose=0)
-model.learn(total_timesteps=100000)
+model.learn(total_timesteps=1000)
 
 print('done')
 
 profits = []
-sims = 100
+sims = 10
 
 for i in range(sims):
     obs = test_env.reset()
